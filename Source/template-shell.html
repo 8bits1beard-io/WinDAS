@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WinDAS (Windows Diagnostic Assessment Suite) - {{COMPUTER_NAME}}</title>
+    <!--CSS-->
+</head>
+<body>
+    <!-- Skip Links for Keyboard Navigation -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <a href="#tab-navigation" class="skip-link">Skip to navigation</a>
+
+    <!-- Screen Reader Status Announcer -->
+    <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
+
+    <!-- Keyboard Help Modal -->
+    <div id="keyboard-help-overlay" class="keyboard-help-overlay" role="dialog" aria-modal="true" aria-labelledby="keyboard-help-title">
+        <div class="keyboard-help-modal">
+            <div class="keyboard-help-header">
+                <h2 id="keyboard-help-title" class="keyboard-help-title">Keyboard Shortcuts</h2>
+                <button type="button" class="keyboard-help-close" onclick="closeKeyboardHelp()" aria-label="Close keyboard shortcuts help">
+                    ×
+                </button>
+            </div>
+
+            <div class="keyboard-help-section">
+                <h3>Navigation</h3>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">Tab</span>
+                    <span class="keyboard-description">Move to next interactive element</span>
+                </div>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">Shift + Tab</span>
+                    <span class="keyboard-description">Move to previous interactive element</span>
+                </div>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">J</span>
+                    <span class="keyboard-description">Next section (scroll down)</span>
+                </div>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">K</span>
+                    <span class="keyboard-description">Previous section (scroll up)</span>
+                </div>
+            </div>
+
+            <div class="keyboard-help-section">
+                <h3>Tab Management</h3>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">← →</span>
+                    <span class="keyboard-description">Navigate between tabs</span>
+                </div>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">Home</span>
+                    <span class="keyboard-description">Jump to first tab</span>
+                </div>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">End</span>
+                    <span class="keyboard-description">Jump to last tab</span>
+                </div>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">Enter / Space</span>
+                    <span class="keyboard-description">Activate focused tab</span>
+                </div>
+            </div>
+
+            <div class="keyboard-help-section">
+                <h3>General</h3>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">?</span>
+                    <span class="keyboard-description">Show this help (or Ctrl+/)</span>
+                </div>
+                <div class="keyboard-shortcut">
+                    <span class="keyboard-key">Esc</span>
+                    <span class="keyboard-description">Close dialogs / help</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Header Bar -->
+    <div class="top-header">
+        <header role="banner">
+            <div class="header">
+                <div class="header-content">
+                    <!-- Left: WinDAS Branding -->
+                    <div class="header-brand">
+                        <div class="header-brand-title">WinDAS</div>
+                        <div class="header-brand-subtitle">Windows Diagnostic Assessment Suite</div>
+                        <div class="header-brand-developer">Developed by Joshua Walderbach</div>
+                    </div>
+
+                    <!-- Right: Computer Info -->
+                    <div class="header-info">
+                        <div id="computerName" class="header-computer-name">Loading...</div>
+                        <div id="timestamp" class="header-timestamp">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+    </div>
+
+    <!-- Left Sidebar Navigation -->
+    <nav id="sidebar-navigation" aria-label="Report sections" class="sidebar-nav">
+        <div class="tab-nav" role="tablist">
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="browsers-panel"
+                    id="browsers-tab"
+                    tabindex="-1"
+                    onclick="switchTab('browsers')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">🌍</span>
+                <span class="tab-label">Browsers</span>
+                <span class="tab-problem-count hidden" id="browsersBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="drivers-panel"
+                    id="drivers-tab"
+                    tabindex="-1"
+                    onclick="switchTab('drivers')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">🚗</span>
+                <span class="tab-label">Drivers</span>
+                <span class="tab-problem-count hidden" id="driversBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="events-panel"
+                    id="events-tab"
+                    tabindex="-1"
+                    onclick="switchTab('events')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">📋</span>
+                <span class="tab-label">Events</span>
+                <span class="tab-problem-count hidden" id="eventsBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="hardware-panel"
+                    id="hardware-tab"
+                    tabindex="-1"
+                    onclick="switchTab('hardware')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">🔧</span>
+                <span class="tab-label">Hardware</span>
+                <span class="tab-problem-count hidden" id="hardwareBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="network-panel"
+                    id="network-tab"
+                    tabindex="-1"
+                    onclick="switchTab('network')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">🌐</span>
+                <span class="tab-label">Network</span>
+                <span class="tab-problem-count hidden" id="networkBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button active"
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="os-panel"
+                    id="os-tab"
+                    tabindex="0"
+                    onclick="switchTab('os')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">💻</span>
+                <span class="tab-label">Operating System</span>
+                <span class="tab-problem-count hidden" id="osBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="printers-panel"
+                    id="printers-tab"
+                    tabindex="-1"
+                    onclick="switchTab('printers')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">🖨️</span>
+                <span class="tab-label">Printers</span>
+                <span class="tab-problem-count hidden" id="printersBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="software-panel"
+                    id="software-tab"
+                    tabindex="-1"
+                    onclick="switchTab('software')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">📦</span>
+                <span class="tab-label">Software</span>
+                <span class="tab-problem-count hidden" id="softwareBadge" aria-label="issues">0</span>
+            </button>
+            <button class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="ticketnotes-panel"
+                    id="ticketnotes-tab"
+                    tabindex="-1"
+                    onclick="switchTab('ticketnotes')"
+                    onkeydown="handleTabKeyDown(event)">
+                <span class="tab-icon">📝</span>
+                <span class="tab-label">Ticket Notes</span>
+                <span class="tab-problem-count hidden" id="ticketnotesBadge" aria-label="issues">0</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Tab Contents -->
+        <main id="main-content" role="main">
+        <div id="os" class="tab-content active" role="tabpanel" aria-labelledby="os-tab" tabindex="0">
+            <!-- TIER 1: ALWAYS VISIBLE -->
+
+            <!-- Overall OS Health Status -->
+            <div id="osHealthBanner" class="health-banner" role="region">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Windows Version & Uptime -->
+            <div class="card" style="margin-bottom: 20px;" role="region" aria-labelledby="os-version-title">
+                <div class="card-header">
+                    <h2 id="os-version-title" class="card-title">🪟 Windows Version & System Uptime</h2>
+                </div>
+                <div id="osVersionUptimeContent"></div>
+            </div>
+
+            <!-- Three Column Layout -->
+            <div class="three-col-grid">
+                <!-- LEFT COLUMN: Updates, Disk, Resources -->
+                <div>
+                    <!-- Windows Update Status -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">🔄 Windows Update</h2>
+                            <span id="updateStatusBadge"></span>
+                        </div>
+                        <div id="updateContent"></div>
+                    </div>
+
+                    <!-- Disk Space for All Drives -->
+                    <div class="card" style="margin-top: 20px;">
+                        <div class="card-header">
+                            <h2 class="card-title">💾 Disk Space</h2>
+                        </div>
+                        <div id="osDiskSpaceContent"></div>
+                    </div>
+                </div>
+
+                <!-- CENTER COLUMN: Services, Boot, Integrity -->
+                <div>
+                    <!-- Critical Windows Services -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">⚙️ Critical Services</h2>
+                        </div>
+                        <div id="servicesContent"></div>
+                    </div>
+
+                    <!-- Boot Performance -->
+                    <div class="card" style="margin-top: 20px;">
+                        <div class="card-header">
+                            <h2 class="card-title">🚀 Boot Performance</h2>
+                        </div>
+                        <div id="bootPerformanceContent"></div>
+                    </div>
+
+                    <!-- System File Integrity -->
+                    <div class="card" style="margin-top: 20px;">
+                        <div class="card-header">
+                            <h2 class="card-title">🔍 System File Integrity</h2>
+                        </div>
+                        <div id="systemIntegrityContent"></div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: Resources, Stability, Alerts -->
+                <div>
+                    <!-- System Resource Utilization -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">📊 Resource Utilization</h2>
+                        </div>
+                        <div id="osResourceUtilizationContent"></div>
+                    </div>
+
+                    <!-- OS Stability Metrics (Last 7 Days) -->
+                    <div class="card" style="margin-top: 20px;">
+                        <div class="card-header">
+                            <h2 class="card-title">📉 Stability Metrics (7 Days)</h2>
+                        </div>
+                        <div id="osStabilityMetricsContent"></div>
+                    </div>
+
+                    <!-- Cross-Tab Alerts -->
+                    <div id="osCrossTabAlerts" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Security Status -->
+            <div class="card">
+                <h3>🔒 Security Status</h3>
+                <div id="securityContent"></div>
+            </div>
+
+            <!-- Windows Features Status -->
+            <div class="card">
+                <h3>🧩 Windows Features & Components</h3>
+                <div id="windowsFeaturesContent"></div>
+            </div>
+
+            <!-- User Profile Information -->
+            <div class="card">
+                <h3>👤 User Profile Information</h3>
+                <div id="userProfileContent"></div>
+            </div>
+
+            <!-- Windows Activation -->
+            <div class="card">
+                <h3>🔑 Windows Activation & Licensing</h3>
+                <div id="activationContent"></div>
+            </div>
+
+            <!-- System Locale & Regional Settings -->
+            <div class="card">
+                <h3>🌍 System Locale & Regional Settings</h3>
+                <div id="localeContent"></div>
+            </div>
+
+            <!-- Domain & Authentication -->
+            <div class="card">
+                <h3>🔐 Domain & Authentication</h3>
+                <div id="domainAuthContent"></div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- Reliability Monitor Summary -->
+            <!-- Reliability Monitor & Event Analysis -->
+            <div class="card">
+                <h3>📈 Reliability Monitor & Event Analysis</h3>
+                <div id="reliabilityMonitorContent"></div>
+            </div>
+
+            <!-- Virtual Memory Configuration -->
+            <div class="card">
+                <h3>💾 Virtual Memory (Page File) Configuration</h3>
+                <div id="virtualMemoryContent"></div>
+            </div>
+
+            <!-- Intune/MDM Management -->
+            <div class="card">
+                <h3>🔧 Intune/MDM Management</h3>
+                <div id="intuneContent"></div>
+            </div>
+
+            <!-- Group Policy -->
+            <div class="card">
+                <h3>📋 Group Policy</h3>
+                <div id="groupPolicyContent"></div>
+            </div>
+
+        </div>
+
+        <div id="hardware" class="tab-content" role="tabpanel" aria-labelledby="hardware-tab" tabindex="0">
+            <!-- TIER 1: CRITICAL TRIAGE -->
+
+            <!-- Overall Hardware Health Status Banner -->
+            <div id="hardwareHealthBanner" class="health-banner" role="region">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Hardware Health Dashboard -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🏥 Hardware Health Dashboard</h2>
+                </div>
+                <div id="hardwareHealthDashboard"></div>
+            </div>
+
+            <!-- Active Performance & Resource Usage -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">⚡ Active Performance & Resource Usage</h2>
+                </div>
+                <div id="activePerformanceIssues"></div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Storage Health & Capacity -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">💾 Storage Health & Capacity</h2>
+                </div>
+                <div id="storageHealthSection"></div>
+            </div>
+
+            <!-- Memory Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🧠 Memory Configuration</h2>
+                </div>
+                <div id="memoryConfigSection"></div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- Other Components -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🔧 Other Components (CPU, GPU, System Board)</h2>
+                </div>
+                <div id="otherComponentsSection"></div>
+            </div>
+
+            <!-- Peripherals & Power -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🔌 Peripherals & Power</h2>
+                </div>
+                <div id="peripheralsPowerSection"></div>
+            </div>
+        </div>
+
+        <div id="network" class="tab-content" role="tabpanel" aria-labelledby="network-tab" tabindex="0">
+            <!-- TIER 1: CRITICAL TRIAGE -->
+
+            <!-- Network Health Status Banner -->
+            <div id="networkHealthBanner" class="health-banner" role="region">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Network Status Dashboard -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🌐 Network Status Dashboard</h2>
+                </div>
+                <div id="networkStatusDashboard"></div>
+            </div>
+
+            <!-- Connectivity Tests -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🔍 Connectivity Tests</h2>
+                </div>
+                <div id="connectivityTestsSection"></div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Active Network Adapters -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📡 Active Network Adapters</h2>
+                </div>
+                <div id="activeAdaptersSection"></div>
+            </div>
+
+            <!-- Firewall & Security -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🛡️ Firewall & Security</h2>
+                </div>
+                <div id="firewallSecuritySection"></div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- DNS Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🔧 DNS Configuration</h2>
+                </div>
+                <div id="dnsConfigSection"></div>
+            </div>
+
+            <!-- Routing Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🗺️ Routing Table</h2>
+                </div>
+                <div id="routingTableSection"></div>
+            </div>
+        </div>
+
+        <div id="printers" class="tab-content" role="tabpanel" aria-labelledby="printers-tab" tabindex="0">
+            <!-- TIER 1: CRITICAL TRIAGE -->
+
+            <!-- Printer Health Status Banner -->
+            <div id="printerHealthBanner" class="health-banner" role="region">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Printer Status Dashboard -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🖨️ Printer Status Dashboard</h2>
+                </div>
+                <div id="printerStatusDashboard"></div>
+            </div>
+
+            <!-- Critical Issues & Spooler Status -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">⚠️ Critical Issues & Spooler Status</h2>
+                </div>
+                <div id="printerCriticalSection"></div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Installed Printers -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🖨️ Installed Printers</h2>
+                </div>
+                <div id="installedPrintersSection"></div>
+            </div>
+
+            <!-- Print Queue Status -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📋 Print Queue Status</h2>
+                </div>
+                <div id="printQueueSection"></div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- Printer Drivers -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">💿 Printer Drivers</h2>
+                </div>
+                <div id="printerDriversSection"></div>
+            </div>
+
+            <!-- Spooler Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">⚙️ Spooler Configuration</h2>
+                </div>
+                <div id="spoolerConfigSection"></div>
+            </div>
+
+        </div>
+
+        <div id="software" class="tab-content" role="tabpanel" aria-labelledby="software-tab" tabindex="0">
+            <!-- TIER 1: CRITICAL TRIAGE -->
+
+            <!-- Software Health Banner -->
+            <div id="softwareHealthBanner" class="health-banner">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Software Status Dashboard -->
+            <div class="card">
+                <h2 class="card-title">💾 Software Status Dashboard</h2>
+                <div id="softwareStatusDashboard"></div>
+            </div>
+
+            <!-- Application Health Issues -->
+            <div class="card">
+                <h2 class="card-title">🚨 Application Health Issues</h2>
+                <div id="applicationHealthIssues"></div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Installed Applications -->
+            <div class="card">
+                <h2 class="card-title">📦 Installed Applications</h2>
+                <div id="installedApplicationsSection"></div>
+            </div>
+
+            <!-- Startup Programs -->
+            <div class="card">
+                <h2 class="card-title">🚀 Startup Programs</h2>
+                <div id="startupProgramsSection"></div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- Performance Metrics -->
+            <div class="card">
+                <h2 class="card-title">📊 Performance Metrics</h2>
+                <div id="performanceMetricsSection"></div>
+            </div>
+
+            <!-- License Status -->
+            <div class="card">
+                <h2 class="card-title">🔑 License Status</h2>
+                <div id="licenseStatusSection"></div>
+            </div>
+
+        </div>
+
+        <div id="drivers" class="tab-content" role="tabpanel" aria-labelledby="drivers-tab" tabindex="0">
+            <!-- TIER 1: CRITICAL TRIAGE -->
+
+            <!-- Overall Driver Health Status Banner -->
+            <div id="driverHealthBanner" class="health-banner" role="region">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Driver Status -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🔧 Driver Status</h2>
+                </div>
+                <div id="criticalDriverIssues"></div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Drivers by Category & Overview -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📊 Driver Overview</h2>
+                </div>
+                <div id="driverOverviewSection"></div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- Driver History & Performance -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📜 Driver History & Performance</h2>
+                </div>
+                <div class="grid grid-2">
+                    <div>
+                        <h3>Recent Driver Changes</h3>
+                        <div id="recentDriverChanges"></div>
+                    </div>
+                    <div>
+                        <h3>Performance Impact</h3>
+                        <div id="driverPerformanceImpact"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="browsers" class="tab-content" role="tabpanel" aria-labelledby="browsers-tab" tabindex="0">
+            <!-- TIER 1: CRITICAL TRIAGE -->
+
+            <!-- Overall Browser Health Status -->
+            <div id="browserHealthBanner" class="health-banner" role="region">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Installed Browsers & Version Compliance (MERGED) -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🌐 Installed Browsers & Version Compliance</h2>
+                    <span id="browserCountBadge"></span>
+                </div>
+                <div id="browserVersionComplianceContent"></div>
+            </div>
+
+            <!-- Auto-Update Service Status -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🔄 Auto-Update Service Status</h2>
+                </div>
+                <div id="browserUpdateServicesContent"></div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Installation Details -->
+            <div class="card">
+                <h3>📦 Installation Details</h3>
+                <div id="browserInstallationDetailsContent"></div>
+            </div>
+
+            <!-- Registry Configuration -->
+            <div class="card">
+                <h3>📋 Registry Configuration</h3>
+                <div id="browserRegistryContent"></div>
+            </div>
+
+            <!-- Extensions Inventory -->
+            <div class="card">
+                <h3>🧩 Extensions & Add-ons</h3>
+                <div id="allExtensionsContent"></div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- System-Wide Browser Settings -->
+            <div class="card">
+                <h3>🌐 System-Wide Browser Settings</h3>
+                <div id="browserSystemWideSettingsContent"></div>
+            </div>
+
+            <!-- Browser Comparison -->
+            <div class="card">
+                <h3>📊 Browser Comparison Matrix</h3>
+                <div id="browserComparisonContent"></div>
+            </div>
+        </div>
+
+        <div id="events" class="tab-content" role="tabpanel" aria-labelledby="events-tab" tabindex="0">
+            <!-- TIER 1: CRITICAL TRIAGE -->
+
+            <!-- Overall Event Health Status Banner -->
+            <div id="eventHealthBanner" class="health-banner" role="region">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Event System Health -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📊 Event System Health</h2>
+                </div>
+                <div id="eventHealthDashboard">
+                    <!-- Health metrics will be populated here -->
+                </div>
+            </div>
+
+            <!-- Critical Issues & Required Actions -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">⚠️ Critical Issues & Required Actions</h2>
+                </div>
+                <div id="criticalIssuesSection">
+                    <!-- Critical issues will be populated here -->
+                </div>
+            </div>
+
+            <!-- TIER 2: DIAGNOSTIC DETAIL -->
+            <div class="tier-separator">⬇ Tier 2: Diagnostic Detail ⬇</div>
+
+            <!-- Event Pattern Analysis -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🔍 Event Pattern Analysis</h2>
+                </div>
+                <div id="eventPatternSection">
+                    <!-- Pattern analysis will be populated here -->
+                </div>
+            </div>
+
+            <!-- Event Overview & Statistics -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📈 Event Overview & Statistics</h2>
+                </div>
+                <div id="eventOverviewSection">
+                    <!-- Overview will be populated here -->
+                </div>
+            </div>
+
+            <!-- Recent Critical Events Timeline -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">⏱️ Recent Critical Events Timeline</h2>
+                </div>
+                <div id="eventTimelineSection">
+                    <input type="text" id="event-search-input" class="search-input" placeholder="Search events by ID, source, or message..." style="width: 100%; padding: 10px; margin-bottom: 15px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary);">
+                    <div id="eventTimelineContent">
+                        <!-- Timeline will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- TIER 3: ADVANCED INFORMATION -->
+            <div class="tier-separator">⬇ Tier 3: Advanced Information ⬇</div>
+
+            <!-- Detailed Event Logs -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📋 Detailed Event Logs</h2>
+                </div>
+                <div id="detailedEventsSection">
+                    <!-- Detailed events will be populated here -->
+                </div>
+            </div>
+        </div>
+
+
+        <div id="ticketnotes" class="tab-content" role="tabpanel" aria-labelledby="ticketnotes-tab" tabindex="0">
+            <!-- Ticket Notes Tab Content -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Ticket Notes</h2>
+                </div>
+                <div class="card-content">
+                    <div class="copy-controls" style="margin-bottom: 15px;">
+                        <button id="generate-ticket-notes-btn" onclick="generateAndDisplayTicketNotes()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">
+                            📝 Generate Ticket Notes
+                        </button>
+                        <button id="copy-ticket-notes-btn" onclick="copyTicketNotes()" style="display:none; padding: 10px 20px; border: 1px solid var(--border-color); border-radius: 5px; cursor: pointer;">
+                            📋 Copy to Clipboard
+                        </button>
+                        <span id="copy-feedback" style="display:none; color:green; margin-left:10px">
+                            ✓ Copied!
+                        </span>
+                    </div>
+                    
+                    <div id="ticket-notes-placeholder" style="padding: 40px; text-align: center; color: var(--text-secondary); border: 2px dashed var(--border-color); border-radius: 8px;">
+                        Click "Generate Ticket Notes" to create a plain-text summary for ticketing systems
+                    </div>
+                    
+                    <pre id="ticket-notes-text" class="ticket-notes-content" onclick="selectAllText(this)" style="display:none;">
+                        <!-- Generated text appears here -->
+                    </pre>
+                </div>
+            </div>
+        </div>
+        </main>
+    </div>
+
+    <script>
+        <!--JS_CORE-->
+        <!--JS_TABS-->
+    </script>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <p>WinDAS - Windows Diagnostic Assessment Suite v2.1.0</p>
+            <p>Developed by <strong>Joshua Walderbach</strong></p>
+        </div>
+    </footer>
+
+</body>
+</html>
+
+
+

@@ -1,0 +1,1076 @@
+        function loadNetworkTab() {
+            const net = systemData.Network;
+            if (!net) {
+                document.getElementById('networkHealthDashboard').innerHTML = '<div class="text-center text-muted">No network data available</div>';
+                return;
+            }
+
+            // SECTION 0: Network Health Dashboard
+            loadNetworkHealthDashboard(net);
+
+            // SECTION 1: Network Health & Connectivity
+            loadNetworkHealthSection(net);
+
+            // SECTION 2: Primary Network Adapter
+            loadPrimaryAdapterSection(net);
+
+            // SECTION 3: Firewall & Security
+            loadFirewallSecuritySection(net);
+
+            // SECTION 4: Routing & Advanced Configuration
+            loadRoutingAdvancedSection(net);
+        }
+        
+        function loadNetworkHealthDashboard(net) {
+            const section = document.getElementById('networkHealthDashboard');
+            if (!section) return;
+
+            const isConnected = net.Summary?.ConnectionStatus === 'Connected';
+            const hasConnectivityIssues = (net.ConnectivityTests?.Tests && Array.isArray(net.ConnectivityTests.Tests)) ?
+                net.ConnectivityTests.Tests.some(test => test.Result !== 'Pass') : false;
+
+            // Calculate health score
+            let healthScore = 100;
+            if (!isConnected) healthScore -= 50;
+            if (hasConnectivityIssues) {
+                const failedTests = net.ConnectivityTests.Tests.filter(test => test.Result !== 'Pass');
+                healthScore -= failedTests.length * 10;
+            }
+
+            // Check for adapter issues
+            const primaryAdapter = net.ActiveAdapters?.find(a => a.DefaultGateway) || net.ActiveAdapters?.[0];
+            if (primaryAdapter && primaryAdapter.Statistics) {
+                const errorRate = (parseInt(primaryAdapter.Statistics.SendErrors || 0) + parseInt(primaryAdapter.Statistics.ReceiveErrors || 0));
+                if (errorRate > 100) healthScore -= 10;
+            }
+
+            healthScore = Math.max(0, Math.min(100, healthScore));
+
+            let healthStatus = 'Excellent';
+            let healthColor = 'var(--success-color)';
+            if (healthScore < 50) {
+                healthStatus = 'Critical';
+                healthColor = 'var(--danger-color)';
+            } else if (healthScore < 70) {
+                healthStatus = 'Poor';
+                healthColor = '#fd7e14';
+            } else if (healthScore < 90) {
+                healthStatus = 'Good';
+                healthColor = 'var(--warning-color)';
+            }
+
+            // Parse latency from connectivity tests
+            let latencyMs = 0;
+            let latencyStatus = 'Unknown';
+            let latencyDisplay = 'N/A';
+
+            if (net.ConnectivityTests?.Tests && net.ConnectivityTests.Tests.length > 0) {
+                const testsWithLatency = net.ConnectivityTests.Tests
+                    .filter(test => test.Latency && test.Latency !== 'N/A' && test.Result === 'Pass')
+                    .map(test => {
+                        const latencyStr = test.Latency.toString();
+                        return parseInt(latencyStr.replace(/[^0-9]/g, '')) || 0;
+                    })
+                    .filter(lat => lat > 0);
+
+                if (testsWithLatency.length > 0) {
+                    latencyMs = Math.round(testsWithLatency.reduce((sum, lat) => sum + lat, 0) / testsWithLatency.length);
+                    latencyDisplay = `${latencyMs}ms`;
+
+                    if (latencyMs < 20) latencyStatus = 'Excellent';
+                    else if (latencyMs < 50) latencyStatus = 'Good';
+                    else if (latencyMs < 100) latencyStatus = 'Fair';
+                    else latencyStatus = 'Poor';
+                }
+            }
+
+            let dashboardHtml = `
+                <div class="network-health-dashboard">
+                    <div class="grid grid-4">
+                        <div class="event-severity-card ${healthStatus.toLowerCase()}">
+                            <div style="text-align: center;">
+                                <div style="font-size: 3rem; margin-bottom: 10px;">📊</div>
+                                <div class="metric-value" style="font-size: 2.5rem; font-weight: bold; color: ${healthColor};">${healthScore}</div>
+                                <div class="metric-label">Network Health</div>
+                                <div style="margin-top: 8px;">
+                                    <span class="status-badge status-${healthStatus.toLowerCase()}">${healthStatus}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="event-severity-card ${isConnected ? 'success' : 'critical'}">
+                            <div style="text-align: center;">
+                                <div style="font-size: 3rem; margin-bottom: 10px;">${isConnected ? '🟢' : '🔴'}</div>
+                                <div class="metric-value" style="font-size: 1.3rem; margin-top: 10px;">${net.Summary?.ConnectionStatus || 'Unknown'}</div>
+                                <div class="metric-label">Connection Status</div>
+                                <div style="margin-top: 8px;">
+                                    <span class="connection-status-indicator ${isConnected ? 'connected' : 'disconnected'}">
+                                        ${isConnected ? '✓ Online' : '✗ Offline'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="event-severity-card">
+                            <div style="text-align: center;">
+                                <div class="latency-indicator" style="justify-content: center; margin-bottom: 10px;">
+                                    <div class="latency-dot latency-${latencyStatus.toLowerCase()}"></div>
+                                    <span style="font-size: 1.2rem; font-weight: 600;">${latencyDisplay}</span>
+                                </div>
+                                <div class="metric-label">Network Latency</div>
+                                <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-muted);">
+                                    ${latencyStatus} Response
+                                </div>
+                            </div>
+                        </div>
+                        <div class="event-severity-card">
+                            <div style="text-align: center;">
+                                <div style="font-size: 3rem; margin-bottom: 10px;">🌍</div>
+                                <div class="metric-value" style="font-size: 1.3rem;">${net.Configuration?.PrimaryDNS || 'Auto'}</div>
+                                <div class="metric-label">Primary DNS</div>
+                                <div style="margin-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
+                                    ${net.Configuration?.DefaultGateway || 'Gateway: Auto'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            section.innerHTML = dashboardHtml;
+        }
+
+        function loadNetworkHealthSection(net) {
+            const section = document.getElementById('networkHealthSection');
+            if (!section) return;
+
+            let html = '';
+
+            // Connection Status Overview
+            const isConnected = net.Summary?.ConnectionStatus === 'Connected';
+            const hasConnectivityIssues = (net.ConnectivityTests?.Tests && Array.isArray(net.ConnectivityTests.Tests)) ?
+                net.ConnectivityTests.Tests.some(test => test.Result !== 'Pass') : false;
+            const hasPerformanceIssues = false; // Network performance metrics removed
+
+            // Calculate latency for this section
+            let latencyDisplay = 'N/A';
+            if (net.ConnectivityTests?.Tests && net.ConnectivityTests.Tests.length > 0) {
+                const testsWithLatency = net.ConnectivityTests.Tests
+                    .filter(test => test.Latency && test.Latency !== 'N/A' && test.Result === 'Pass')
+                    .map(test => {
+                        const latencyStr = test.Latency.toString();
+                        return parseInt(latencyStr.replace(/[^0-9]/g, '')) || 0;
+                    })
+                    .filter(lat => lat > 0);
+
+                if (testsWithLatency.length > 0) {
+                    const avgLatency = Math.round(testsWithLatency.reduce((sum, lat) => sum + lat, 0) / testsWithLatency.length);
+                    latencyDisplay = `${avgLatency}ms`;
+                }
+            }
+
+            // Connection metrics
+            html += `
+                <div class="grid grid-4" style="margin-bottom: 20px;">
+                    <div class="metric-card">
+                        <div class="metric-value">
+                            <span class="status-badge status-${isConnected ? 'healthy' : 'critical'}">
+                                ${net.Summary?.ConnectionStatus || 'Unknown'}
+                            </span>
+                        </div>
+                        <div class="metric-label">Internet Status</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${net.Configuration?.DefaultGateway || 'N/A'}</div>
+                        <div class="metric-label">Gateway</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${net.Configuration?.PrimaryDNS || 'N/A'}</div>
+                        <div class="metric-label">Primary DNS</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${latencyDisplay}</div>
+                        <div class="metric-label">Latency</div>
+                    </div>
+                </div>
+            `;
+            
+            // Critical Issues
+            if (hasConnectivityIssues) {
+                const failedTests = net.ConnectivityTests.Tests.filter(test => test.Result !== 'Pass');
+                const criticalTests = failedTests.filter(test => test.Test === 'Internet' || test.Test === 'DNS' || test.Test === 'Gateway');
+                
+                if (criticalTests.length > 0) {
+                    html += `
+                        <div class="alert alert-danger">
+                            <strong>⚠️ Critical Connectivity Issues Detected</strong>
+                            <ul style="margin-top: 10px; margin-left: 20px;">
+                                ${criticalTests.map(test => `<li>${test.Test} connectivity failed: Unable to reach ${test.Target}</li>`).join('')}
+                            </ul>
+                            <p><strong>Impact:</strong> ${criticalTests.some(t => t.Test === 'Internet') ? 'No internet access' : 
+                                                         criticalTests.some(t => t.Test === 'DNS') ? 'DNS resolution failures' : 
+                                                         'Local network connectivity issues'}</p>
+                            <p><strong>Action Required:</strong> Check network cables, router/modem status, and network configuration</p>
+                        </div>
+                    `;
+                }
+            }
+            
+            
+            // Connectivity Tests
+            if (net.ConnectivityTests?.Tests && net.ConnectivityTests.Tests.length > 0) {
+                html += '<h3 style="margin: 20px 0 15px 0;">Connectivity Tests</h3>';
+                
+                net.ConnectivityTests.Tests.forEach(test => {
+                    const isSuccess = test.Result === 'Pass';
+                    const statusBadge = isSuccess ? 'healthy' : 'critical';
+                    const statusText = isSuccess ? '✓ Reachable' : '✗ Unreachable';
+                    
+                    html += `
+                        <div class="connectivity-test ${isSuccess ? 'pass' : 'fail'}">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <div style="font-size: 1.5rem;">${isSuccess ? '✓' : '✗'}</div>
+                                    <div>
+                                        <strong style="font-size: 1.1rem;">${test.Target}</strong>
+                                        <div style="font-size: 0.9rem; color: var(--text-secondary);">${test.Test || 'Connectivity Test'}</div>
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span class="status-badge status-${statusBadge}" style="font-size: 0.9rem;">${statusText}</span>
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                                        ${test.Latency && test.Latency !== 'Timeout' ? test.Latency : isSuccess ? 'Connected' : 'No Response'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else if (!isConnected) {
+                html += '<div class="alert alert-danger">⚠️ No network connection detected</div>';
+            }
+            
+            section.innerHTML = html;
+        }
+        
+        function loadPrimaryAdapterSection(net) {
+            const section = document.getElementById('primaryAdapterSection');
+            if (!section) return;
+            
+            let html = '';
+            
+            // Find primary adapter (one with gateway or first active)
+            const primaryAdapter = net.ActiveAdapters?.find(a => a.DefaultGateway) || net.ActiveAdapters?.[0];
+            
+            if (primaryAdapter) {
+                // Determine adapter type and icon
+                let adapterIcon = '💻';
+                let adapterType = 'Ethernet';
+                if (primaryAdapter.Name?.toLowerCase().includes('wi-fi') || primaryAdapter.Name?.toLowerCase().includes('wireless')) {
+                    adapterIcon = '📶';
+                    adapterType = 'Wi-Fi';
+                } else if (primaryAdapter.Name?.toLowerCase().includes('bluetooth')) {
+                    adapterIcon = '🔵';
+                    adapterType = 'Bluetooth';
+                }
+
+                // Calculate connection quality
+                let connectionQuality = 'Excellent';
+                let qualityColor = 'var(--success-color)';
+                const errors = parseInt(primaryAdapter.Statistics?.SendErrors || 0) + parseInt(primaryAdapter.Statistics?.ReceiveErrors || 0);
+                if (errors > 100) {
+                    connectionQuality = 'Poor';
+                    qualityColor = 'var(--danger-color)';
+                } else if (errors > 50) {
+                    connectionQuality = 'Fair';
+                    qualityColor = 'var(--warning-color)';
+                }
+
+                html += `
+                    <div class="network-adapter-card primary connected">
+                        <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                            <div style="font-size: 4rem;">${adapterIcon}</div>
+                            <div style="flex: 1;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                                    <div>
+                                        <h3 style="margin: 0; color: var(--text-primary);">${escapeHtml(primaryAdapter.Name)}</h3>
+                                        <div style="margin-top: 5px; display: flex; gap: 10px;">
+                                            <span class="connection-status-indicator connected">🟢 Connected</span>
+                                            <span class="status-badge" style="background: var(--primary-color); color: white;">★ Primary</span>
+                                            <span class="status-badge" style="background: var(--info-color); color: white;">${adapterType}</span>
+                                        </div>
+                                    </div>
+                                    <div style="text-align: center; padding: 10px; background: var(--bg-secondary); border-radius: 6px;">
+                                        <div style="font-size: 1.2rem; font-weight: bold; color: ${qualityColor};">${connectionQuality}</div>
+                                        <div style="font-size: 0.8rem; color: var(--text-muted);">Quality</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                            <div style="background: var(--bg-secondary); padding: 15px; border-radius: 6px;">
+                                <h4 style="margin: 0 0 15px 0; color: var(--accent-color);">🌐 Network Configuration</h4>
+                                <div style="display: grid; gap: 10px;">
+                                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                                        <span style="color: var(--text-muted);">IPv4 Address</span>
+                                        <strong>${primaryAdapter.IPAddresses?.find(ip => ip && ip.includes('.')) || 'N/A'}</strong>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                                        <span style="color: var(--text-muted);">Subnet Mask</span>
+                                        <strong>${primaryAdapter.IPSubnets?.find(s => s && s.includes('.')) || 'N/A'}</strong>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                                        <span style="color: var(--text-muted);">Gateway</span>
+                                        <strong>${primaryAdapter.DefaultGateway || 'N/A'}</strong>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                                        <span style="color: var(--text-muted);">MAC Address</span>
+                                        <strong style="font-family: monospace; font-size: 0.9rem;">${primaryAdapter.MACAddress || 'N/A'}</strong>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                        <span style="color: var(--text-muted);">DHCP</span>
+                                        <span class="status-badge status-${primaryAdapter.DHCPEnabled ? 'info' : 'warning'}">
+                                            ${primaryAdapter.DHCPEnabled ? 'Enabled' : 'Static'}
+                                        </span>
+                                    </div>
+                                    ${primaryAdapter.Speed ? `
+                                        <div style="margin-top: 10px;">
+                                            <span style="color: var(--text-muted);">Link Speed:</span>
+                                            <div class="network-speed-meter">
+                                                <div class="speed-bar">
+                                                    <div class="speed-fill" style="width: ${parseInt(primaryAdapter.Speed) > 100 ? '80%' : '40%'};"></div>
+                                                </div>
+                                                <strong>${primaryAdapter.Speed}</strong>
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div style="background: var(--bg-secondary); padding: 15px; border-radius: 6px;">
+                                <h4 style="margin: 0 0 15px 0; color: var(--accent-color);">🌍 DNS Configuration</h4>
+                                <div style="display: grid; gap: 10px;">
+                                    ${primaryAdapter.DNSServers && primaryAdapter.DNSServers.length > 0 ?
+                                        primaryAdapter.DNSServers.map((dns, i) => `
+                                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                                                <span style="color: var(--text-muted);">${i === 0 ? 'Primary' : i === 1 ? 'Secondary' : 'DNS ' + (i + 1)}</span>
+                                                <strong style="font-family: monospace;">${dns}</strong>
+                                            </div>
+                                        `).join('') :
+                                        '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No DNS servers configured</div>'
+                                    }
+                                    ${primaryAdapter.DHCPServer ? `
+                                        <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                            <span style="color: var(--text-muted);">DHCP Server</span>
+                                            <strong style="font-family: monospace;">${primaryAdapter.DHCPServer}</strong>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                `;
+                
+                // Traffic Statistics
+                if (primaryAdapter.Statistics) {
+                    const sendErrors = parseInt(primaryAdapter.Statistics.SendErrors || 0);
+                    const receiveErrors = parseInt(primaryAdapter.Statistics.ReceiveErrors || 0);
+                    const totalErrors = sendErrors + receiveErrors;
+
+                    html += `
+                        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                            <h4 style="margin: 0 0 15px 0; color: var(--accent-color);">📊 Network Traffic Statistics</h4>
+                            <div class="traffic-stats">
+                                <div class="traffic-stat">
+                                    <div class="traffic-value" style="color: var(--success-color);">↑</div>
+                                    <div class="traffic-label">Sent</div>
+                                    <div style="font-size: 0.9rem; margin-top: 4px;">${primaryAdapter.Statistics.BytesSent || '0 bytes'}</div>
+                                </div>
+                                <div class="traffic-stat">
+                                    <div class="traffic-value" style="color: var(--info-color);">↓</div>
+                                    <div class="traffic-label">Received</div>
+                                    <div style="font-size: 0.9rem; margin-top: 4px;">${primaryAdapter.Statistics.BytesReceived || '0 bytes'}</div>
+                                </div>
+                                <div class="traffic-stat">
+                                    <div class="traffic-value" style="color: ${sendErrors > 0 ? 'var(--warning-color)' : 'var(--success-color)'};">${sendErrors}</div>
+                                    <div class="traffic-label">Send Errors</div>
+                                    <div style="font-size: 0.8rem; margin-top: 4px; color: ${sendErrors > 0 ? 'var(--warning-color)' : 'var(--success-color)'};">
+                                        ${sendErrors === 0 ? 'No errors' : sendErrors > 100 ? 'High' : 'Low'}
+                                    </div>
+                                </div>
+                                <div class="traffic-stat">
+                                    <div class="traffic-value" style="color: ${receiveErrors > 0 ? 'var(--warning-color)' : 'var(--success-color)'};">${receiveErrors}</div>
+                                    <div class="traffic-label">Receive Errors</div>
+                                    <div style="font-size: 0.8rem; margin-top: 4px; color: ${receiveErrors > 0 ? 'var(--warning-color)' : 'var(--success-color)'};">
+                                        ${receiveErrors === 0 ? 'No errors' : receiveErrors > 100 ? 'High' : 'Low'}
+                                    </div>
+                                </div>
+                                ${totalErrors > 0 ? `
+                                    <div class="traffic-stat" style="border: 1px solid var(--warning-color);">
+                                        <div class="traffic-value" style="color: var(--warning-color);">⚠</div>
+                                        <div class="traffic-label">Error Rate</div>
+                                        <div style="font-size: 0.9rem; margin-top: 4px; color: var(--warning-color);">
+                                            ${totalErrors > 100 ? 'High' : 'Moderate'}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+                
+                // WiFi Details if wireless
+                if (net.WiFi && net.WiFi.Connected) {
+                    const signalQuality = net.WiFi.SignalQuality > 80 ? 'Excellent' : 
+                                        net.WiFi.SignalQuality > 60 ? 'Good' : 
+                                        net.WiFi.SignalQuality > 40 ? 'Fair' : 'Poor';
+                    
+                    html += `
+                        <div class="alert alert-info" style="margin-top: 20px;">
+                            <strong>WiFi Connection Active</strong>
+                            <div style="margin-top: 10px;">
+                                <div>SSID: ${net.WiFi.SSID}</div>
+                                <div>Signal: ${net.WiFi.SignalQuality}% (${signalQuality})</div>
+                                <div>Channel: ${net.WiFi.Channel || 'N/A'}</div>
+                                <div>Security: ${net.WiFi.Authentication || 'Unknown'}</div>
+                                ${net.WiFi.RadioType ? `<div>Radio Type: ${net.WiFi.RadioType}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+            } else {
+                html = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No active network adapter found</div>';
+            }
+            
+            section.innerHTML = html;
+        }
+
+        // DOMAIN & AUTHENTICATION SECTION
+        function loadDomainAuthSection(os) {
+            let html = '';
+
+            // Domain info
+            const domainName = os.SystemInfo?.DomainName || 'WORKGROUP';
+            const isDomainJoined = domainName !== 'WORKGROUP';
+
+            html += `
+                <div style="margin-bottom: 15px;">
+                    <strong>Domain:</strong> ${domainName}<br>
+                    <strong>Computer Name:</strong> ${os.SystemInfo?.ComputerName || 'Unknown'}<br>
+                    <strong>Workgroup:</strong> ${isDomainJoined ? 'N/A (Domain Joined)' : domainName}
+                </div>
+            `;
+
+            // Domain Authentication Status
+            if (os.DomainAuthentication) {
+                const auth = os.DomainAuthentication;
+                const authHealthy = auth.TrustRelationship === 'Healthy' && auth.DCConnectivity === 'Success';
+
+                html += `
+                    <div style="margin-top: 15px; padding: 15px; background: var(--bg-secondary); border-radius: 6px;">
+                        <h4 style="margin-bottom: 10px;">🔐 Domain Authentication</h4>
+                        <div class="grid grid-2" style="margin-bottom: 10px;">
+                            <div class="metric-card">
+                                <div class="metric-label">Trust Relationship</div>
+                                <div class="metric-value">
+                                    <span class="status-badge status-${auth.TrustRelationship === 'Healthy' ? 'healthy' : 'danger'}">${auth.TrustRelationship}</span>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Kerberos Status</div>
+                                <div class="metric-value">
+                                    <span class="status-badge status-${auth.KerberosStatus === 'Healthy' ? 'healthy' : 'warning'}">${auth.KerberosStatus || 'Unknown'}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-2">
+                            <div><strong>DNS Resolution:</strong> ${auth.DNSResolution || 'Unknown'}</div>
+                            <div><strong>Auth Failures (24h):</strong> ${auth.RecentAuthFailures || 0}</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Time Synchronization Status
+            if (os.TimeSynchronization) {
+                const time = os.TimeSynchronization;
+                const timeHealthy = time.NTPStatus === 'Synchronized' && time.W32TimeStatus === 'Running';
+
+                html += `
+                    <div style="margin-top: 15px; padding: 15px; background: var(--bg-secondary); border-radius: 6px;">
+                        <h4 style="margin-bottom: 10px;">⏰ Time Synchronization</h4>
+                        <div class="grid grid-2" style="margin-bottom: 10px;">
+                            <div class="metric-card">
+                                <div class="metric-label">Sync Status</div>
+                                <div class="metric-value">
+                                    <span class="status-badge status-${timeHealthy ? 'healthy' : 'warning'}">${time.NTPStatus}</span>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Time Source</div>
+                                <div class="metric-value">
+                                    <div style="font-size: 0.9em;">${time.TimeSourceType || 'Unknown'}</div>
+                                    <div style="font-size: 0.8em; color: var(--text-muted);">${time.NTPSource || 'Not configured'}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-3">
+                            <div><strong>W32Time Service:</strong> ${time.W32TimeStatus || 'Unknown'}</div>
+                            <div><strong>Last Sync:</strong> ${time.LastSyncTime ? new Date(time.LastSyncTime).toLocaleString() : 'Never'}</div>
+                            <div><strong>Time Drift:</strong> ${time.TimeDrift ? time.TimeDrift.toFixed(2) + 's' : 'Unknown'}</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('domainAuthContent').innerHTML = html;
+        }
+
+        // INTUNE/MDM SECTION
+        function loadIntuneSection(os) {
+            let html = '';
+
+            if (os.IntuneServices) {
+                html += loadIntuneHealthSection(os.IntuneServices);
+            } else {
+                html += `
+                    <div style="text-align: center; padding: 20px;">
+                        <span class="status-badge status-info">Intune/MDM Not Available</span>
+                        <p style="margin-top: 10px; color: var(--text-muted);">Device not enrolled in Intune or MDM services not detected</p>
+                    </div>
+                `;
+            }
+
+            document.getElementById('intuneContent').innerHTML = html;
+        }
+
+        // GROUP POLICY SECTION
+        function loadGroupPolicySection(os) {
+            let html = '';
+
+            if (os.GroupPolicy) {
+                const gpHealthy = os.GroupPolicy.LastRefreshSuccessful !== false;
+                const gpStatus = gpHealthy ? 'Applied' : 'Failed';
+                const gpBadge = gpHealthy ? 'healthy' : 'warning';
+
+                html += `
+                    <div style="padding: 15px; background: var(--bg-secondary); border-radius: 6px;">
+                        <h4 style="margin-bottom: 15px;">📋 Policy Status</h4>
+                        <div class="grid grid-2" style="margin-bottom: 10px;">
+                            <div class="metric-card">
+                                <div class="metric-label">Last Refresh</div>
+                                <div class="metric-value">
+                                    <span class="status-badge status-${gpBadge}">${gpStatus}</span>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Applied On</div>
+                                <div class="metric-value">
+                                    <div style="font-size: 0.9em;">${formatNetDate(os.GroupPolicy.LastRefreshTime, 'Never')}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="text-align: center; padding: 20px;">
+                        <span class="status-badge status-info">Group Policy Not Available</span>
+                        <p style="margin-top: 10px; color: var(--text-muted);">Group Policy information not detected (may be in workgroup)</p>
+                    </div>
+                `;
+            }
+
+            document.getElementById('groupPolicyContent').innerHTML = html;
+        }
+
+        // SYSTEM INTEGRITY SECTION
+        function loadSystemIntegritySection(os) {
+            let html = '';
+
+            try {
+                if (os.SystemIntegrity) {
+                    const integrity = os.SystemIntegrity;
+                    console.log('SystemIntegrity data:', integrity);
+
+                    // Overview section
+                    html += `
+                        <div style="padding: 15px; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 15px;">
+                        `;
+
+                    // WMI Repository Check
+                    if (integrity.WMI) {
+                        const wmiHealthy = integrity.WMI === 'Consistent';
+                        html += `
+                            <div style="margin-bottom: 15px;">
+                                <h5>WMI Repository</h5>
+                                <span class="status-badge status-${wmiHealthy ? 'healthy' : 'warning'}">
+                                    ${integrity.WMI}
+                                </span>
+                            </div>
+                        `;
+                    }
+
+                    // SFC Section - Handle both legacy results and manual commands
+                    if (integrity.SFC) {
+                        const sfc = integrity.SFC;
+
+                        if (sfc.ManualCommand) {
+                            // Manual command - just show status without command details
+                            html += `
+                                <div style="margin-bottom: 15px;">
+                                    <h5>System File Checker (SFC)</h5>
+                                    <div style="margin-bottom: 10px;">
+                                        <span class="status-badge status-info">${sfc.Status}</span>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            // Legacy structure with actual scan results
+                            let sfcStatus = 'info';
+                            if (sfc.Status && sfc.Status.includes('No integrity violations')) sfcStatus = 'healthy';
+                            else if (sfc.Status && sfc.Status.includes('violations found')) sfcStatus = 'warning';
+                            else if (sfc.Status && sfc.Status.includes('could not fix')) sfcStatus = 'danger';
+
+                            let lastScanDisplay = 'Unknown';
+                            if (sfc.LastScan) {
+                                try {
+                                    const scanDate = new Date(sfc.LastScan);
+                                    if (!isNaN(scanDate.getTime())) {
+                                        lastScanDisplay = scanDate.toLocaleString();
+                                    }
+                                } catch (e) {
+                                    lastScanDisplay = String(sfc.LastScan);
+                                }
+                            }
+
+                            html += `
+                                <div style="margin-bottom: 15px;">
+                                    <h5>System File Checker (SFC)</h5>
+                                    <div style="margin-bottom: 10px;">
+                                        <span class="status-badge status-${sfcStatus}">${sfc.Status || 'Unknown'}</span>
+                                        <span style="margin-left: 10px; color: var(--text-muted); font-size: 0.9em;">
+                                            Last scan: ${lastScanDisplay}
+                                        </span>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
+
+                    // DISM Section - Handle both legacy results and manual commands
+                    if (integrity.DISM) {
+                        const dism = integrity.DISM;
+
+                        if (dism.ManualCommand) {
+                            // Manual command - just show status without command details
+                            html += `
+                                <div style="margin-bottom: 15px;">
+                                    <h5>DISM Image Health</h5>
+                                    <div style="margin-bottom: 10px;">
+                                        <span class="status-badge status-info">${dism.Status}</span>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            // Legacy structure with actual scan results
+                            let dismStatus = 'info';
+                            if (dism.CorruptionLevel === 'None' || (dism.Status && dism.Status.includes('Healthy'))) dismStatus = 'healthy';
+                            else if (dism.CorruptionLevel === 'Repairable') dismStatus = 'warning';
+                            else if (dism.Status && dism.Status.includes('corruption detected')) dismStatus = 'danger';
+
+                            let lastScanDisplay = '';
+                            if (dism.LastScan) {
+                                try {
+                                    const scanDate = new Date(dism.LastScan);
+                                    if (!isNaN(scanDate.getTime())) {
+                                        lastScanDisplay = `
+                                            <span style="margin-left: 10px; color: var(--text-muted); font-size: 0.9em;">
+                                                Last scan: ${scanDate.toLocaleString()}
+                                            </span>`;
+                                    }
+                                } catch (e) {
+                                    lastScanDisplay = `
+                                        <span style="margin-left: 10px; color: var(--text-muted); font-size: 0.9em;">
+                                            Last scan: ${String(dism.LastScan)}
+                                        </span>`;
+                                }
+                            }
+
+                            html += `
+                                <div style="margin-bottom: 15px;">
+                                    <h5>DISM Image Health</h5>
+                                    <div style="margin-bottom: 10px;">
+                                        <span class="status-badge status-${dismStatus}">${dism.Status || 'Unknown'}</span>
+                                        ${lastScanDisplay}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
+
+                    html += '</div>';
+
+                } else {
+                    html += `
+                        <div style="text-align: center; padding: 20px;">
+                            <span class="status-badge status-info">System Integrity Not Available</span>
+                            <p style="margin-top: 10px; color: var(--text-muted);">System integrity data not collected</p>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('systemIntegrityContent').innerHTML = html;
+
+            } catch (error) {
+                console.error('Error in loadSystemIntegritySection:', error);
+                document.getElementById('systemIntegrityContent').innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <span class="status-badge status-danger">Error Loading System Integrity</span>
+                        <p style="margin-top: 10px; color: var(--text-muted);">Check console for details</p>
+                    </div>
+                `;
+            }
+        }
+
+
+        function loadIntuneHealthSection(intuneData) {
+            if (!intuneData) return '<div style="text-align: center; padding: 20px;"><span class="status-badge status-info">Not Available</span></div>';
+
+            let html = '';
+            
+            // 1. ENROLLMENT STATUS
+            const isEnrolled = intuneData.IsEnrolled || false;
+            const enrollmentType = intuneData.EnrollmentType || 'Unknown';
+            const deviceId = intuneData.DeviceId || 'N/A';
+            const azureAdJoined = intuneData.AzureAdJoined || false;
+            const tenantId = intuneData.TenantId || 'N/A';
+            
+            let enrollmentStatusClass = isEnrolled ? 'status-healthy' : 'status-warning';
+            let enrollmentStatusText = isEnrolled ? enrollmentType : 'Not Enrolled';
+            
+            html += `
+                <div class="grid grid-2" style="margin-bottom: 15px;">
+                    <div class="metric-card">
+                        <div class="metric-label">Enrollment Status</div>
+                        <div class="metric-value">
+                            <span class="status-badge ${enrollmentStatusClass}">${enrollmentStatusText}</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Azure AD Status</div>
+                        <div class="metric-value">
+                            <span class="status-badge ${azureAdJoined ? 'status-healthy' : 'status-info'}">${azureAdJoined ? 'Joined' : 'Not Joined'}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 2. DEVICE INFORMATION (if enrolled)
+            if (isEnrolled) {
+                html += `
+                    <div style="background: var(--bg-tertiary); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 10px;">Device Registration</h4>
+                        <div class="grid grid-2">
+                            <div><strong>Device ID:</strong> <span class="text-muted" style="font-family: monospace; font-size: 0.9em;">${deviceId}</span></div>
+                            <div><strong>Tenant ID:</strong> <span class="text-muted" style="font-family: monospace; font-size: 0.9em;">${tenantId}</span></div>
+                        </div>
+                    </div>
+                `;
+
+                // 2a. SYNC INFORMATION (if enrolled)
+                const lastSync = intuneData.LastSyncTime;
+                const syncStatus = intuneData.LastSyncStatus || 'Unknown';
+                const nextSync = intuneData.NextScheduledSync;
+                const syncFreq = intuneData.SyncFrequency || 'Unknown';
+
+                let syncStatusClass = 'status-info';
+                if (syncStatus === 'Success') syncStatusClass = 'status-healthy';
+                else if (syncStatus === 'Failed') syncStatusClass = 'status-danger';
+                else if (syncStatus === 'In Progress') syncStatusClass = 'status-warning';
+
+                let lastSyncText = 'Never';
+                let lastSyncAgo = '';
+                if (lastSync) {
+                    const syncDate = new Date(lastSync);
+                    lastSyncText = syncDate.toLocaleString();
+                    const now = new Date();
+                    const diffMs = now - syncDate;
+                    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+                    const diffDays = Math.round(diffHours / 24);
+
+                    if (diffHours < 1) {
+                        lastSyncAgo = 'Less than 1 hour ago';
+                    } else if (diffHours < 24) {
+                        lastSyncAgo = `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+                    } else {
+                        lastSyncAgo = `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+                    }
+                }
+
+                let nextSyncText = 'Unknown';
+                if (nextSync) {
+                    const nextSyncDate = new Date(nextSync);
+                    nextSyncText = nextSyncDate.toLocaleString();
+                }
+
+                html += `
+                    <div style="background: var(--bg-tertiary); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 10px;">Sync Status</h4>
+                        <div class="grid grid-2" style="margin-bottom: 10px;">
+                            <div class="metric-card">
+                                <div class="metric-label">Last Sync</div>
+                                <div class="metric-value">
+                                    <div style="font-size: 0.95em;">${lastSyncText}</div>
+                                    ${lastSyncAgo ? `<div style="font-size: 0.8em; color: var(--text-muted);">${lastSyncAgo}</div>` : ''}
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Sync Status</div>
+                                <div class="metric-value">
+                                    <span class="status-badge ${syncStatusClass}">${syncStatus}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-2">
+                            <div><strong>Next Scheduled:</strong> <span style="font-size: 0.9em;">${nextSyncText}</span></div>
+                            <div><strong>Frequency:</strong> <span style="font-size: 0.9em;">${syncFreq}</span></div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 3. SERVICE HEALTH OVERVIEW
+            const overallHealth = intuneData.OverallHealth || 'Unknown';
+            const isIntuneCapable = intuneData.IsIntuneCapable || false;
+            const servicesData = intuneData.Services || [];
+            const requiredIssues = intuneData.RequiredIssues || [];
+            const optionalIssues = intuneData.OptionalIssues || [];
+            
+            let healthStatusClass = 'status-info';
+            if (overallHealth === 'Healthy') healthStatusClass = 'status-healthy';
+            else if (overallHealth === 'Warning') healthStatusClass = 'status-warning';
+            else if (overallHealth === 'Critical') healthStatusClass = 'status-danger';
+            
+            html += `
+                <div style="background: var(--bg-tertiary); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <h4 style="margin-bottom: 10px;">Service Health</h4>
+                    <div class="grid grid-3">
+                        <div class="metric-card">
+                            <div class="metric-label">Overall Health</div>
+                            <div class="metric-value">
+                                <span class="status-badge ${healthStatusClass}">${overallHealth}</span>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Intune Capable</div>
+                            <div class="metric-value">
+                                <span class="status-badge ${isIntuneCapable ? 'status-healthy' : 'status-warning'}">${isIntuneCapable ? 'Yes' : 'Limited'}</span>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Services Status</div>
+                            <div class="metric-value">
+                                ${requiredIssues.length === 0 ? '<span class="status-badge status-healthy">All Core OK</span>' : `<span class="status-badge status-danger">${requiredIssues.length} Issues</span>`}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 4. CRITICAL SERVICE ISSUES (if any)
+            if (requiredIssues.length > 0) {
+                html += `
+                    <div class="alert alert-danger" style="margin-bottom: 15px;">
+                        <strong>⚠️ Critical Service Issues Found</strong>
+                        <p>The following required services have issues that may impact Intune functionality:</p>
+                        <ul style="margin: 10px 0; padding-left: 20px;">
+                `;
+                
+                requiredIssues.forEach(issue => {
+                    html += `<li><strong>${escapeHtml(issue.DisplayName)}</strong> - ${escapeHtml(issue.HealthReason)}</li>`;
+                });
+                
+                html += `
+                        </ul>
+                        <p><strong>Impact:</strong> Device may not receive policies, apps, or updates properly.</p>
+                    </div>
+                `;
+            }
+            
+            // 5. OPTIONAL SERVICE WARNINGS (if any)
+            if (optionalIssues.length > 0 && optionalIssues.length <= 3) {
+                html += `
+                    <div class="alert alert-warning" style="margin-bottom: 15px;">
+                        <strong>Optional Service Notes</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                `;
+                
+                optionalIssues.forEach(issue => {
+                    html += `<li>${escapeHtml(issue.DisplayName)} - ${escapeHtml(issue.HealthReason)}</li>`;
+                });
+                
+                html += '</ul></div>';
+            }
+
+            return html;
+        }
+        
+        function loadFirewallSecuritySection(net) {
+            const section = document.getElementById('firewallSecuritySection');
+            if (!section) return;
+            
+            let html = '';
+            
+            if (net.FirewallRules) {
+                const fw = net.FirewallRules;
+                
+                // Firewall Profiles
+                if (fw.Profiles && fw.Profiles.length > 0) {
+                    html += '<div class="grid grid-3">';
+                    fw.Profiles.forEach(profile => {
+                        // Simple boolean check - Enabled is now guaranteed to be 1 (enabled) or 0 (disabled)
+                        const isEnabled = profile.Enabled === 1;
+                        html += `
+                            <div class="metric-card">
+                                <div style="color: ${isEnabled ? 'var(--success-color)' : 'var(--danger-color)'}; font-size: 1.5rem;">
+                                    ${isEnabled ? '✓ Enabled' : '✗ Disabled'}
+                                </div>
+                                <div class="metric-label">${escapeHtml(profile.Name)} Profile</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 5px;">
+                                    In: ${profile.DefaultInbound === 0 ? 'Block' : 'Allow'} | 
+                                    Out: ${profile.DefaultOutbound === 0 ? 'Block' : 'Allow'}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                }
+                
+                // Active Rules Summary
+                if (fw.Summary) {
+                    html += `
+                        <div style="margin-top: 20px;">
+                            <h3>Firewall Rules Summary</h3>
+                            <div class="grid grid-2">
+                                <div>
+                                    <strong>Total Rules:</strong> ${fw.Summary.TotalRules || 0}<br>
+                                    <strong>Enabled Rules:</strong> ${fw.Summary.EnabledRules || 0}<br>
+                                    <strong>Inbound Rules:</strong> ${fw.Summary.InboundRules || 0}
+                                </div>
+                                <div>
+                                    <strong>Allow Rules:</strong> ${fw.Summary.AllowRules || 0}<br>
+                                    <strong>Block Rules:</strong> ${fw.Summary.BlockRules || 0}<br>
+                                    <strong>Outbound Rules:</strong> ${fw.Summary.OutboundRules || 0}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Security warnings - check if any profile is disabled
+                if (fw.Profiles && fw.Profiles.some(p => p.Enabled !== 1)) {
+                    const disabledProfiles = fw.Profiles.filter(p => p.Enabled !== 1).map(p => p.Name);
+                    html += `
+                        <div class="alert alert-warning" style="margin-top: 20px;">
+                            <strong>⚠️ Security Warning</strong>
+                            <p>Firewall profile(s) disabled: ${disabledProfiles.join(', ')}. This may leave your system vulnerable to network attacks.</p>
+                        </div>
+                    `;
+                }
+            } else {
+                html = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Firewall information not available</div>';
+            }
+            
+            section.innerHTML = html;
+        }
+        
+        function loadRoutingAdvancedSection(net) {
+            const section = document.getElementById('routingAdvancedSection');
+            if (!section) return;
+            
+            let html = '';
+            
+            // Routing Table
+            html += `
+                <div class="collapsible" onclick="toggleCollapsible(this)" style="background: var(--bg-tertiary); padding: 15px; border-radius: 6px; margin-bottom: 10px; cursor: pointer;">
+                    <h3 style="margin: 0;">
+                        <span style="display: inline-block; width: 20px;">▶</span> 
+                        Routing Table ${net.RoutingTable ? `(${net.RoutingTable.length} routes)` : ''}
+                    </h3>
+                </div>
+                <div class="collapsible-content" style="display: none; padding: 15px; background: var(--bg-secondary); margin-top: -10px; margin-bottom: 10px; border-radius: 0 0 6px 6px;">
+            `;
+            
+            if (net.RoutingTable && net.RoutingTable.length > 0) {
+                html += `
+                    <table style="width: 100%; font-size: 0.9rem;">
+                        <thead>
+                            <tr style="background: var(--bg-tertiary);">
+                                <th style="padding: 8px; text-align: left;">Destination</th>
+                                <th style="padding: 8px; text-align: left;">Gateway</th>
+                                <th style="padding: 8px; text-align: left;">Interface</th>
+                                <th style="padding: 8px; text-align: left;">Metric</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                net.RoutingTable.slice(0, 20).forEach(route => {
+                    html += `
+                        <tr>
+                            <td style="padding: 8px;">${route.DestinationPrefix || 'N/A'}</td>
+                            <td style="padding: 8px;">${route.NextHop || 'On-link'}</td>
+                            <td style="padding: 8px;">${route.InterfaceAlias || 'N/A'}</td>
+                            <td style="padding: 8px;">${route.RouteMetric || 'N/A'}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+                
+                if (net.RoutingTable.length > 20) {
+                    html += `<p style="text-align: center; color: var(--text-secondary); margin-top: 10px;">Showing first 20 of ${net.RoutingTable.length} routes</p>`;
+                }
+            } else {
+                html += '<p style="color: var(--text-secondary);">No routing information available</p>';
+            }
+            
+            html += '</div>';
+            
+            // Network Services - Display network quality metrics instead
+            if (net.Summary && (net.Summary.ActiveConnections || net.Summary.IPv4Status || net.Summary.IPv6Status)) {
+                html += `
+                    <div class="collapsible" onclick="toggleCollapsible(this)" style="background: var(--bg-tertiary); padding: 15px; border-radius: 6px; margin-bottom: 10px; cursor: pointer;">
+                        <h3 style="margin: 0;">
+                            <span style="display: inline-block; width: 20px;">▶</span> Network Quality Metrics
+                        </h3>
+                    </div>
+                    <div class="collapsible-content" style="display: none; padding: 15px; background: var(--bg-secondary); margin-top: -10px; margin-bottom: 10px; border-radius: 0 0 6px 6px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            ${net.Summary.ActiveConnections ? `
+                                <div style="background: var(--bg-tertiary); padding: 10px; border-radius: 6px;">
+                                    <div style="font-weight: bold; margin-bottom: 5px;">Active Connections</div>
+                                    <div style="font-size: 1.2rem; color: var(--primary-color);">${net.Summary.ActiveConnections}</div>
+                                </div>
+                            ` : ''}
+                            ${net.Summary.IPv4Status ? `
+                                <div style="background: var(--bg-tertiary); padding: 10px; border-radius: 6px;">
+                                    <div style="font-weight: bold; margin-bottom: 5px;">IPv4 Status</div>
+                                    <div style="color: ${net.Summary.IPv4Status === 'Connected' ? '#28a745' : '#dc3545'};">${net.Summary.IPv4Status}</div>
+                                </div>
+                            ` : ''}
+                            ${net.Summary.IPv6Status ? `
+                                <div style="background: var(--bg-tertiary); padding: 10px; border-radius: 6px;">
+                                    <div style="font-weight: bold; margin-bottom: 5px;">IPv6 Status</div>
+                                    <div style="color: ${net.Summary.IPv6Status === 'Connected' ? '#28a745' : '#dc3545'};">${net.Summary.IPv6Status}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            section.innerHTML = html;
+        }
+        
+        // Load Printers Tab - Redesigned with priority-based layout
